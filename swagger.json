@@ -1,0 +1,108 @@
+{
+  "openapi": "3.0.1",
+  "info": {
+    "title": "sway-oracle",
+    "version": "0.1.0",
+    "description": "Hackathon prototype API for resolving objective sports prediction queries using aggregated sports data and GPT-4o-mini."
+  },
+  "servers": [
+    {
+      "url": "http://localhost:3000",
+      "description": "Local development"
+    }
+  ],
+  "paths": {
+    "/resolve": {
+      "post": {
+        "summary": "Resolve a sports prediction query",
+        "operationId": "resolveQuery",
+        "tags": ["Resolution"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResolveRequest"
+              },
+              "example": {
+                "query": "Did the Lakers win on Nov 5, 2025?"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful resolution",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResolveResponse"
+                },
+                "example": {
+                  "resolution": "Yes, the Los Angeles Lakers defeated the Golden State Warriors 115-107 on Nov 5, 2025.",
+                  "confidence": 0.91,
+                  "reasoning": "Aggregated scores from TheSportsDB and API-Sports confirm the Lakers' win. GPT consensus matches scores.",
+                  "sources": [
+                    "https://www.thesportsdb.com/event/12345",
+                    "https://v3.football.api-sports.io/fixtures?id=999"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request payload"
+          },
+          "502": {
+            "description": "Upstream data source failure"
+          },
+          "500": {
+            "description": "Unexpected server error"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ResolveRequest": {
+        "type": "object",
+        "required": ["query"],
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Objective sports yes/no query to resolve"
+          }
+        }
+      },
+      "ResolveResponse": {
+        "type": "object",
+        "required": ["resolution", "confidence", "reasoning", "sources"],
+        "properties": {
+          "resolution": {
+            "type": "string",
+            "description": "Natural language resolution of the query"
+          },
+          "confidence": {
+            "type": "number",
+            "format": "float",
+            "minimum": 0,
+            "maximum": 1,
+            "description": "Model-calculated confidence score"
+          },
+          "reasoning": {
+            "type": "string",
+            "description": "Summary of the reasoning process"
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "List of source URLs used for the resolution"
+          }
+        }
+      }
+    }
+  }
+}

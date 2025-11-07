@@ -1,0 +1,1 @@
+export { resolveQuery } from "../resolver";
