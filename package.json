@@ -1,12 +1,13 @@
 {
-  "name": "ai-sports-oracle",
+  "name": "sway-oracle",
   "version": "0.1.0",
   "description": "Sports-focused AI-assisted oracle prototype for prediction markets.",
   "main": "dist/index.js",
   "scripts": {
     "dev": "nodemon --watch src --exec ts-node src/index.ts",
     "build": "tsc",
-    "start": "node dist/index.js"
+    "start": "node dist/index.js",
+    "test:stats": "vitest run --dir src/tests/statistics --run"
   },
   "keywords": [
     "oracle",
@@ -21,9 +22,9 @@
     "node": ">=18"
   },
   "dependencies": {
-    "@langchain/community": "^1.0.0",
-    "@langchain/core": "^0.2.19",
-    "@langchain/openai": "^0.2.5",
+    "@langchain/core": "^0.3.59",
+    "@langchain/langgraph": "^0.4.9",
+    "@langchain/openai": "^0.4.0",
     "axios": "^1.7.7",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
@@ -43,6 +44,7 @@
     "@types/swagger-ui-express": "^4.1.8",
     "nodemon": "^3.1.4",
     "ts-node": "^10.9.2",
-    "typescript": "^5.6.3"
+    "typescript": "^5.6.3",
+    "vitest": "^1.0.0"
   }
 }

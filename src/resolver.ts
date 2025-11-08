@@ -5,6 +5,8 @@ import { buildSystemPrompt, buildUserPrompt } from "./llm/prompt";
 import { askModel } from "./llm/client";
 import { logResolution } from "./db";
 import { EvidencePayload, ResolutionResult } from "./types";
+import { classifyStatisticsQuery } from "./stats/queryClassifier";
+import { resolveStatisticsQuery } from "./stats/resolver";
 
 type EvidenceGroup = {
 	key: string;
@@ -60,7 +62,8 @@ const PROVIDER_RELIABILITY: Record<string, number> = {
 	THESPORTSDB: 0.85,
 	API_SPORTS_SOCCER: 0.95,
 	API_SPORTS_BASKETBALL: 0.95,
-	THE_ODDS_API: 0.9
+	THE_ODDS_API: 0.9,
+	SERP_API: 0.65
 };
 
 const FINAL_STATUS_KEYWORDS = [
@@ -98,9 +101,17 @@ const MIN_CORROBORATING_PROVIDERS = 3;
 
 export async function resolveQuery(query: string): Promise<ResolutionResult> {
 	const metadata = extractQueryMetadata(query);
+	const statisticsQuery = classifyStatisticsQuery(query, metadata);
+
+	if (statisticsQuery) {
+		const statisticsResult = await resolveStatisticsQuery(query, statisticsQuery, metadata);
+		await logResolution({ query, ...statisticsResult });
+		return statisticsResult;
+	}
+
 	const structured = parseQueryToStructuredRequest(query, metadata);
 
-	const agentOutput = await runDeepAgent(structured);
+		const agentOutput = await runDeepAgent(structured, { originalQuery: query });
 	const analysis = analyzeArtifacts(agentOutput.artifacts, structured);
 	const decision = await decideResolution(query, structured, agentOutput.summary, analysis);
 
@@ -281,6 +292,8 @@ function normalizeArtifact(artifact: DeepAgentArtifact, structured: StructuredQu
 			return normalizeApiSports(output, structured, artifact, provider);
 		case "THE_ODDS_API":
 			return normalizeOdds(output, structured, artifact);
+		case "SERP_API":
+			return normalizeSerpApi(output, structured, artifact);
 		default:
 			return [];
 	}
@@ -467,6 +480,73 @@ function normalizeOdds(
 				sourceUrl: toOptionalString((output as Record<string, unknown>).url) ?? artifact.tool
 			});
 		})
+		.filter(isNormalizedFact);
+}
+
+function normalizeSerpApi(
+	output: Record<string, unknown>,
+	structured: StructuredQuery,
+	artifact: DeepAgentArtifact
+): NormalizedFact[] {
+	const payload = output.payload;
+	if (!payload || typeof payload !== "object") {
+		return [];
+	}
+
+	const recordPayload = payload as Record<string, unknown>;
+	const collections: unknown[] = [];
+
+	if (Array.isArray(recordPayload.articles_results)) {
+		collections.push(...recordPayload.articles_results);
+	}
+	if (Array.isArray(recordPayload.news_results)) {
+		collections.push(...recordPayload.news_results);
+	}
+	if (Array.isArray(recordPayload.top_stories)) {
+		collections.push(...recordPayload.top_stories);
+	}
+
+	return collections
+		.map((entry) => {
+			if (!entry || typeof entry !== "object") {
+				return null;
+			}
+
+			const record = entry as Record<string, unknown>;
+			const title = toOptionalString(record.title ?? record.heading ?? record.name);
+			if (!title) {
+				return null;
+			}
+
+			const link =
+				toOptionalString(record.link) ??
+				toOptionalString(record.news_url) ??
+				toOptionalString(record.url);
+
+			const publishedCandidate =
+				toOptionalString(record.published_time ?? record.date ?? record.date_utc ?? record.time);
+			const isoDate =
+				publishedCandidate && Date.parse(publishedCandidate)
+					? new Date(publishedCandidate).toISOString()
+					: undefined;
+
+			const outcome = extractOutcomeFromTitle(title, structured.teams);
+			return buildFact({
+				provider: "SERP_API",
+				structured,
+				raw: record,
+				display: title,
+				category: "news",
+				winner: outcome?.winner,
+				homeTeam: outcome?.homeTeam,
+				awayTeam: outcome?.awayTeam,
+				status: "reported",
+				endTimestamp: isoDate,
+				sourceUrl: link ?? artifact.tool,
+				reliabilityOverride: 0.65
+			});
+		})
+		.filter((fact) => fact?.canonicalKey && fact.canonicalKey !== "unknown")
 		.filter(isNormalizedFact);
 }
 

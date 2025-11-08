@@ -3,8 +3,8 @@ import dotenv from "dotenv";
 import path from "node:path";
 import fs from "node:fs";
 import swaggerUi from "swagger-ui-express";
-import routes from "./src/routes";
 import helmet from "helmet";
+import routes from "./routes";
 
 dotenv.config();
 

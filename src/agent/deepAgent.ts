@@ -2,11 +2,9 @@ import pLimit from "p-limit";
 import { ChatOpenAI } from "@langchain/openai";
 import {
   AgentTools,
-  RssTool,
-  TheSportsDbTool,
   ApiSportsSoccerTool,
-  ApiSportsBasketballTool,
-  TheOddsScoresTool
+  TheOddsScoresTool,
+  SerpApiTool
 } from "./tools";
 import { buildSystemPrompt } from "../llm/prompt";
 import { StructuredQuery } from "../parsers/query-schema";
@@ -38,14 +36,40 @@ export async function runDeepAgent(structuredQuery: StructuredQuery, hints?: Rec
 
   const team = structuredQuery.teams?.[0];
 
-  const candidateInputs: Array<{ tool: typeof AgentTools[number]; input: unknown }> = [
-    { tool: RssTool, input: { limitPerFeed: 8 } }
-  ];
+  const serpQuery = (() => {
+    if (typeof hints?.originalQuery === "string" && hints.originalQuery.trim().length > 0) {
+      return hints.originalQuery;
+    }
+
+    const nonEmptyTeams = (structuredQuery.teams ?? []).map((team) => team.trim()).filter((team) => team.length > 0);
+    if (nonEmptyTeams.length >= 2) {
+      const base = `${nonEmptyTeams[0]} vs ${nonEmptyTeams[1]}`;
+      return structuredQuery.date ? `${base} ${structuredQuery.date}` : base;
+    }
+
+    if (nonEmptyTeams.length === 1) {
+      return structuredQuery.date ? `${nonEmptyTeams[0]} ${structuredQuery.date}` : nonEmptyTeams[0];
+    }
+
+    if (structuredQuery.player) {
+      return structuredQuery.date ? `${structuredQuery.player} ${structuredQuery.date}` : structuredQuery.player;
+    }
+
+    if (structuredQuery.competition) {
+      return structuredQuery.competition;
+    }
+
+    return undefined;
+  })();
+
+  const candidateInputs: Array<{ tool: typeof AgentTools[number]; input: unknown }> = [];
+
+  if (serpQuery) {
+    candidateInputs.push({ tool: SerpApiTool, input: { query: serpQuery, engine: "google_news", numResults: 6 } });
+  }
 
   if (team || structuredQuery.date) {
     candidateInputs.push(
-      { tool: TheSportsDbTool, input: { team, date: structuredQuery.date ?? undefined } },
-      { tool: ApiSportsBasketballTool, input: { team, date: structuredQuery.date ?? undefined } },
       { tool: ApiSportsSoccerTool, input: { team, date: structuredQuery.date ?? undefined } }
     );
   }
